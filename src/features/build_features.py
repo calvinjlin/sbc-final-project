@@ -6,7 +6,7 @@ from sklearn.preprocessing import MinMaxScaler
 __all__ = ['Transform','Weekly']
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 
-class Transform:
+class FeatureTools:
     def normalize(df,inverse=False):
         scaler = MinMaxScaler()
         scaler.fit(df)
@@ -16,7 +16,6 @@ class Transform:
         
         return norm_df, scaler
 
-class Weekly:
     def pivot_day_of_week(data_series,zip_code):
         df = data_series.copy().to_frame()
         df['weekday'] = df.index.dayofweek
@@ -32,23 +31,31 @@ class Weekly:
 
 def process_covid_case(input_filename=f'{PROJECT_DIR}/data/raw/case_count.json',
                        output_filepath=f'{PROJECT_DIR}/data/interim/case_count.parquet'):
+    
+    # Load and extract data
     with open(input_filename) as file:
         data = json.loads(file.read())
-
     data = pd.DataFrame(
         [item['properties'] for item in data['features']]
     )
 
+    # Remove extra columns and remove 'Zip_' from column names 
     data = data.drop(columns=['Notes', 'FID']).rename(
         columns={'Date': 'Timestamp'})
     data.columns = [num.lstrip('Zip_') for num in data.columns]
 
+    # Daily data starts at midnight
     data['Timestamp'] = pd.to_datetime(data['Timestamp']).dt.normalize()
     data = data.set_index('Timestamp').sort_index().tz_localize(None)
 
+    # Change cumulative count to new cases by taking derivative
     for col in data.columns:
         data[col] = data[col]-data[col].shift(1)
         data.loc[data[col] < 0, col] = 0
+
+    data = data.fillna(0)
+
+    # Save file
     data.to_parquet(output_filepath)
 
 
